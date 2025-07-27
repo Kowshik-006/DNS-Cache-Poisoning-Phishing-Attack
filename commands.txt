@@ -1,0 +1,31 @@
+# Monitor all DNS traffic (port 53)
+sudo tcpdump -i any -n port 53 -vv
+
+# Or for more detailed output with packet contents
+sudo tcpdump -i any -n port 53 -vv -X
+
+# To save to a file for later analysis
+sudo tcpdump -i any -n port 53 -vv -w dns_traffic.pcap
+
+sudo nano /etc/bind/named.conf.options
+
+sudo systemctl restart named
+sudo systemctl status named
+
+# Check for errors
+sudo journalctl -xeu named
+sudo python3 dns_server.py
+
+source attack_env/bin/activate
+sudo python3 attack.py --resolver 10.0.0.53 --attacker-ip 10.0.0.10 --real-ns 8.8.8.8 --domain my-lab-bank.com --tries 1 --requests 1 --responses 10
+
+python3 -m venv phishing_env
+
+# Activate it
+source phishing_env/bin/activate
+
+# Install packages
+pip install Flask==2.3.3 Flask-CORS==4.0.0
+
+# Run server
+python server.py
