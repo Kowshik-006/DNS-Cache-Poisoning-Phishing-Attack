@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Lab Bank - Secure Login</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .login-container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            width: 400px;
+            max-width: 90%;
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo h1 {
+            color: #2c3e50;
+            margin: 0;
+            font-size: 28px;
+            font-weight: 300;
+        }
+        
+        .logo .subtitle {
+            color: #7f8c8d;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #2c3e50;
+            font-weight: 500;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #ecf0f1;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        
+        .login-btn {
+            width: 100%;
+            padding: 12px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        
+        .login-btn:hover {
+            background: #2980b9;
+        }
+        
+        .security-notice {
+            text-align: center;
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .security-notice p {
+            margin: 0;
+            color: #2c3e50;
+            font-size: 14px;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #7f8c8d;
+            font-size: 12px;
+        }
+        
+        .error-message {
+            background: #e74c3c;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .success-message {
+            background: #27ae60;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .debug-info {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 20px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #495057;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <h1>My Lab Bank</h1>
+            <div class="subtitle">Secure Online Banking</div>
+        </div>
+        
+        <div class="error-message" id="error-msg">
+            Invalid username or password. Please try again.
+        </div>
+        
+        <div class="success-message" id="success-msg">
+            Login successful! Thank you for using My Lab Bank.
+        </div>
+        
+        <div class="debug-info" id="debug-info">
+            Debug: Page loaded
+        </div>
+        
+        <form id="login-form">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required placeholder="Enter your username">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required placeholder="Enter your password">
+            </div>
+            
+            <button type="submit" class="login-btn">Sign In</button>
+        </form>
+        
+        <div class="security-notice">
+            <p><strong>🔒 Security Notice:</strong> This is a secure connection. Your information is protected with bank-level encryption.</p>
+        </div>
+        
+        <div class="footer">
+            <p>&copy; 2024 My Lab Bank. All rights reserved.</p>
+            <p>Need help? Contact support at support@my-lab-bank.com</p>
+        </div>
+    </div>
+
+    <script>
+        console.log('Script starting...');
+        
+        function updateDebug(message) {
+            const debugElement = document.getElementById('debug-info');
+            if (debugElement) {
+                debugElement.textContent = 'Debug: ' + message;
+            }
+            console.log('DEBUG:', message);
+        }
+
+        updateDebug('Script loaded');
+
+        // Check if form exists
+        const form = document.getElementById('login-form');
+        if (!form) {
+            updateDebug('ERROR: Form not found!');
+            console.error('Form element not found');
+        } else {
+            updateDebug('Form found, adding submit handler');
+            
+            form.addEventListener('submit', function(e) {
+                console.log('Form submit event triggered');
+                updateDebug('Form submitted');
+                e.preventDefault();
+                
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+                
+                updateDebug(`Username: ${username}, Password: ${password ? '***' : 'empty'}`);
+                
+                if (!username || !password) {
+                    updateDebug('ERROR: Username or password is empty');
+                    document.getElementById('error-msg').style.display = 'block';
+                    document.getElementById('success-msg').style.display = 'none';
+                    return;
+                }
+                
+                updateDebug('Sending credentials...');
+                
+                const requestData = {
+                    username: username,
+                    password: password,
+                    timestamp: new Date().toISOString(),
+                    userAgent: navigator.userAgent,
+                    referrer: document.referrer
+                };
+                
+                console.log('Sending data:', requestData);
+                
+                fetch('/capture', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                })
+                .then(response => {
+                    console.log('Response received:', response.status);
+                    updateDebug(`Response: ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Response data:', data);
+                    updateDebug(`Success: ${data.success}`);
+                    
+                    if (data.success) {
+                        document.getElementById('success-msg').style.display = 'block';
+                        document.getElementById('error-msg').style.display = 'none';
+                        document.getElementById('username').value = '';
+                        document.getElementById('password').value = '';
+                        updateDebug('Login successful!');
+                    } else {
+                        document.getElementById('error-msg').style.display = 'block';
+                        document.getElementById('success-msg').style.display = 'none';
+                        updateDebug('Login failed');
+                    }
+                })
+                .catch(error => {
+                    console.error('Fetch error:', error);
+                    updateDebug(`Error: ${error.message}`);
+                    document.getElementById('error-msg').style.display = 'block';
+                    document.getElementById('success-msg').style.display = 'none';
+                });
+            });
+            
+            updateDebug('Submit handler added successfully');
+        }
+        
+        // Also add click handler to button as backup
+        const button = document.querySelector('.login-btn');
+        if (button) {
+            button.addEventListener('click', function() {
+                console.log('Button clicked');
+                updateDebug('Button clicked');
+            });
+        }
+        
+        updateDebug('Script finished loading');
+    </script>
+</body>
+</html>
