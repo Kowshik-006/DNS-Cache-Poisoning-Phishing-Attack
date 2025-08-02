@@ -20,27 +20,27 @@ A minimal installation is recommended. A browser can be installed separately on 
 Keep the "Pre-allocate Full Size" option disabled.
 
 ![VirtualBox VM Configuration](images/disable_preallocate.png)
-*VirtualBox VM setup and configuration interface*
+<br>*VirtualBox VM setup and configuration interface*
 
 ### Clipboard Sharing and Drag & Drop
 
 ![VirtualBox Settings Menu](images/access_vm_settings.png)
-*Accessing VirtualBox VM settings*
+<br>*Accessing VirtualBox VM settings*
 
 ![Guest Additions Configuration](images/clipboard_dragndrop.png)
-*Configuring clipboard sharing and drag & drop features*
+<br>*Configuring clipboard sharing and drag & drop features*
 
 After starting the VM, insert the Guest Additions CD image from the menu.
 
 ![Insert Guest Additions CD](images/insert_guest_drive.png)
-*Inserting Guest Additions CD image from VirtualBox menu*
+<br>*Inserting Guest Additions CD image from VirtualBox menu*
 
 
 ![VBox Guest Additions Desktop Icon](images/guest_addition_icon.png)
-*VBox Guest Additions icon on the Taskbar*
+<br>*VBox Guest Additions icon on the Taskbar*
 
 ![Open Guest Additions CD](images/open_guest_addition.png)
-*Open Guest Additions CD image from Taskbar menu*
+<br>*Open Guest Additions CD image from Taskbar menu*
 
 Right-click on empty space inside VBox_GAs window and choose "Open in Terminal".
 
@@ -147,27 +147,26 @@ Configure the IP settings for each VM.
 ### Network and IP Config Setup Demo (Router)
 
 ![VM Network Settings(Adapter 1)](images/network_adapter1.png)
-*VM network configuration for Adapter 1*
+<br>*VM network configuration for Adapter 1*
 
 ![VM Network Settings (Adapter 2)](images/network_adapter2.png)
-*VM network configuration for Adapter 2*
+<br>*VM network configuration for Adapter 2*
 
 Hit OK and start the VM. 
 
 Right-click on the Network icon and go to "Edit Connections" to configure the IP addresses.
 
 ![Access Network Manager Setting](images/access_network_manager.png)
-
-*Accessing Network Manager*
+<br>*Accessing Network Manager*
 
 ![Network Manager - Edit Connections](images/available_connections.png)
-*Network Manager showing available connections*
+<br>*Network Manager showing available connections*
 
 ![Configuration for Wired Connection 1](images/wired_connection1.png)
-*Setting up IP addresses and network parameters for Wired Connection 1*
+<br>*Setting up IP addresses and network parameters for Wired Connection 1*
 
 ![Configuration for Wired Connection 2](images/wired_connection2.png)
-*Setting up IP addresses and network parameters for Wired Connection 2*
+<br>*Setting up IP addresses and network parameters for Wired Connection 2*
 
 
 
@@ -272,12 +271,12 @@ python3 ./phishing_site/server.py
 The Victim will be routed to the website that the Attacker is hosting.
 
 ![Phishing Site Interface](images/landing_page.png)
-*The phishing site mimicking a legitimate social media login page*
+<br>*The phishing site mimicking a legitimate social media login page*
 
 The entered username and password can be found in the file `/phishing_site/captured_credentials.json` on the Attacker VM.
 
 ![Captured Credentials](images/captured_response.png)
-*Example of captured credentials stored in JSON format*
+<br>*Example of captured credentials stored in JSON format*
 
 ---
 
