@@ -139,7 +139,7 @@ class SimpleDNSResolver:
                 return
                 
             response_id = struct.unpack('!H', response_data[0:2])[0]
-            print(f"[*] Response ID: {response_id}")
+            # print(f"[*] Response ID: {response_id}")
             
             # Check if this response matches a pending query
             if response_id in self.pending_queries:
@@ -163,8 +163,8 @@ class SimpleDNSResolver:
                 # Remove from pending queries
                 del self.pending_queries[response_id]
                 
-            else:
-                print(f"[*] No matching query found for response ID {response_id}")
+            # else:
+                # print(f"[*] No matching query found for response ID {response_id}")
                 
         except Exception as e:
             print(f"[-] Error handling response: {e}")
