@@ -2,6 +2,112 @@
 
 > **⚠️ Disclaimer**: This project is for educational purposes only. It demonstrates DNS cache poisoning vulnerabilities and should only be used in controlled environments for learning cybersecurity concepts.
 
+## Introduction
+
+This project demonstrates a complete **DNS Cache Poisoning and Phishing Attack** using the **Kaminsky technique**, one of the most effective methods for exploiting DNS vulnerabilities. The demonstration showcases how attackers can manipulate DNS resolution to redirect victims to malicious websites and harvest their credentials.
+
+### What is DNS Cache Poisoning?
+
+DNS Cache Poisoning (also known as DNS Spoofing) is a cyberattack that exploits vulnerabilities in the Domain Name System (DNS) to redirect domain name queries to malicious IP addresses. When successful, victims attempting to visit legitimate websites are unknowingly redirected to attacker-controlled servers.
+
+### The Kaminsky Attack
+
+Named after security researcher Dan Kaminsky, this attack method exploits the DNS protocol's reliance on 16-bit transaction IDs for response validation. The attack works by:
+
+1. **Triggering Cache Misses**: Sending queries for non-existent subdomains to force DNS lookups
+2. **Response Flooding**: Overwhelming the DNS resolver with spoofed responses containing different transaction IDs
+3. **Transaction ID Guessing**: Attempting to match the resolver's outbound query transaction ID
+4. **Authority Section Poisoning**: Including malicious nameserver information to gain control over entire domains
+
+### Attack Scenario
+
+In this demonstration:
+- **Target Domain**: `friendsbook.com` (simulating a social media platform)
+- **Attack Vector**: DNS cache poisoning followed by credential harvesting
+- **Network Setup**: Isolated virtual machine environment with realistic network topology
+- **Outcome**: Victim credentials captured through a convincing phishing interface
+
+### Learning Objectives
+
+By completing this demonstration, you will understand:
+- How DNS resolution works and where vulnerabilities exist
+- The technical mechanics of the Kaminsky DNS cache poisoning attack
+- How poisoned DNS entries can be leveraged for phishing attacks
+- The importance of DNS security measures like DNSSEC
+- Practical mitigation strategies for both system administrators and end users
+
+### Prerequisites
+
+- Basic understanding of networking concepts (IP addresses, routing, DNS)
+- Familiarity with Linux command line operations
+- Knowledge of virtualization platforms (VirtualBox)
+- Understanding of cybersecurity principles and ethical considerations
+
+---
+
+## The Kaminsky Attack - Technical Overview
+
+### Attack Mechanism
+
+The implemented attack is based on the **Kaminsky DNS Cache Poisoning technique**, which exploits the DNS protocol's reliance on transaction IDs for response validation. Here's how the attack works:
+
+#### Network Topology
+- **Attacker VM** (10.0.2.15): Located in an external network, connected to the resolver and victim through the router
+- **DNS Resolver VM** (192.168.100.10): Acts as a caching DNS server for the victim network
+- **Victim VM** (192.168.100.30): The target user who will be redirected to the phishing site
+- **Router VM**: Bridges the attacker and victim networks, forwards spoofed packets
+
+#### Attack Flow
+
+1. **Initial Query**: The attacker sends a DNS query for a random subdomain of the target domain (e.g., `abc123def.friendsbook.com`) to the DNS resolver.
+
+2. **Cache Miss**: The DNS resolver checks its cache for the queried domain. Since the query contains a non-existent random subdomain, a cache miss occurs.
+
+3. **Query Forwarding**: The resolver forwards the query to the upstream DNS server (8.8.8.8) with a specific transaction ID.
+
+4. **Response Flooding**: Simultaneously, the attacker floods the resolver with thousands of spoofed DNS responses, impersonating 8.8.8.8. Each response contains a different transaction ID, attempting to guess the correct one.
+
+5. **Transaction ID Matching**: The DNS resolver accepts a response only when the transaction/query ID matches the one it used when forwarding the query to the actual DNS server.
+
+6. **Cache Poisoning**: When a spoofed response with the correct transaction ID is accepted, the resolver caches the malicious entry. The spoofed response includes:
+   - **Answer Section**: Maps the random subdomain to the attacker's IP
+   - **Authority Section**: Claims the attacker's server is the authoritative nameserver for `friendsbook.com`
+   - **Additional Section**: Provides the attacker's IP as the nameserver's address
+
+7. **Domain Hijacking**: After successful poisoning, the DNS resolver caches entries that redirect `friendsbook.com` and all its subdomains to the attacker's IP (10.0.2.15).
+
+8. **Victim Redirection**: When the victim queries `friendsbook.com`, the poisoned resolver returns the attacker's IP instead of the legitimate one.
+
+9. **Credential Harvesting**: The victim is routed to the malicious phishing site hosted by the attacker, where entered credentials are captured and stored in a JSON file.
+
+#### Implementation Features
+
+- **Continuous Verification**: The attack includes a separate verification thread that continuously monitors whether the cache poisoning was successful
+- **Random Subdomain Generation**: Creates unique random subdomains to ensure cache misses and avoid detection
+- **Realistic Attack Flow**: The attacker discovers success through verification queries rather than knowing when the correct transaction ID was guessed
+- **Multi-threaded Architecture**: Parallel attack threads maximize the chances of successful poisoning
+
+#### Security Features Disabled
+
+Modern DNS servers implement multiple security mechanisms that make Kaminsky attacks extremely difficult or impossible. To demonstrate this attack in a controlled educational environment, the following security features were intentionally disabled in our custom DNS resolver:
+
+- **Port Randomization**: Modern DNS resolvers use random source ports (not just random transaction IDs) to make response spoofing significantly harder. Our custom resolver uses a fixed port (5000) for outbound queries, making it vulnerable to response flooding attacks.
+
+- **ICMP Error Handling**: Production DNS servers properly handle ICMP error messages and can detect network anomalies that might indicate spoofing attempts. The ICMP error handling was disabled in the resolver configuration to prevent interference with spoofed responses.
+
+- **DNS Timeout and Retry Logic**: Commercial DNS servers implement sophisticated timeout mechanisms and query retry logic that can help detect and mitigate response flooding attacks. Our implementation uses extended timeouts and simplified retry logic to allow sufficient time for the attack to succeed.
+
+> **Note**: Modern DNS servers like BIND, Unbound, and commercial solutions are highly secure and include comprehensive protection against cache poisoning attacks. This demonstration required a custom-built DNS resolver with deliberately weakened security to illustrate the attack mechanics for educational purposes.
+
+#### Success Indicators
+
+The attack is considered successful when:
+- The verification thread detects that `friendsbook.com` resolves to the attacker's IP (10.0.2.15)
+- All attack threads automatically stop flooding responses
+- The victim is successfully redirected to the phishing site
+
+---
+
 ## Environment Setup
 
 The virtual machine (VM) application used is **VirtualBox**. The VM OS is **Lubuntu 24.04.2 LTS**.
@@ -168,6 +274,15 @@ Right-click on the Network icon and go to "Edit Connections" to configure the IP
 ![Configuration for Wired Connection 2](images/wired_connection2.png)
 <br>*Setting up IP addresses and network parameters for Wired Connection 2*
 
+A route for packets from 8.8.8.8 through enp0s8 (Victim/Resolver Side Router Interface) has to be added so that the router forwards the spoofed packets from the attacker to the resolver. 
+
+![Click to Add route](images/add_route_button.png)
+<br>*Click to Add route*
+
+![Add Router for 8.8.8.8](images/add_route_for_8888.png)
+<br>*Adding route for packets from 8.8.8.8 through enp0s8 (Victim/Resolver Side Router Interface)*
+
+
 
 
 Hit Save.
@@ -175,13 +290,6 @@ Hit Save.
 To verify the IP configuration, run `ip addr show` in the terminal. The output should include entries for `enp0s3` and `enp0s8` with their new IP addresses. This command may need to be run twice for refreshing.
 
 ## Extra Configuration Steps
-
-### Router
-- Route 8.8.8.8 traffic through `enp0s8`:
-  ```bash
-  sudo ip route add 8.8.8.8/32 dev enp0s8
-  ```
-  The router must send spoofed responses from the Attacker to the DNS resolver.
 
 ### DNS Resolver
 - Disable `systemd-resolved`:
@@ -239,6 +347,9 @@ In the address bar of Firefox, type `about:config`. Search for the following set
 sudo python3 dns_resolver.py
 ```
 
+![DNS Resolver Starts](images/dns_resolver_start.png)
+<br>*The DNS Resolver Starts*
+
 ### Attacker VM
 
 **Options**:
@@ -256,6 +367,9 @@ sudo python3 dns_resolver.py
 ```bash
 sudo python3 attack.py --requests 1 --responses 65536 --tries 5
 ```
+
+![Successful Attack](images/successful_attack.png)
+<br>*A Successful Attack*
 
 ## Phishing
 
